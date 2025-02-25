@@ -7,6 +7,7 @@ use std::path::Path;
 use std::process::Stdio;
 use tokio::process::Command;
 use url::Url;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -68,7 +69,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // 3. Load the archive file of already downloaded video IDs.
-    // Under Debian, we use /tmp instead of Windows paths.
     let archive_file = "/home/craig/youtube/downloaded.txt";
     let mut downloaded_ids: HashSet<String> = HashSet::new();
     if Path::new(archive_file).exists() {
@@ -90,10 +90,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let output_template = format!("{}/%(title)s.%(ext)s", output_directory);
 
     // Specify cookies option for age-restricted videos.
-    // Use a cookies file (adjust as needed). Make sure this file exists.
     let cookies_file = "/home/craig/youtube/cookies.txt";
-    // For Debian, we assume yt-dlp is in your PATH.
-    // Specify the location of ffmpeg (if necessary). Adjust if needed.
     let ffmpeg_location = "/usr/bin";
 
     // Process each video URL.
@@ -109,11 +106,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("Downloading {} ...", video_url);
 
         // Build the process start info.
-        // This command mirrors the C# command-line arguments.
         let yt_dlp_executable = "/home/craig/youtube/yt-dlp_linux";
         let args = vec![
             "--download-archive", archive_file,
-            "-f", "bestvideo+bestaudio/best",
+            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4",
+            "--sleep-requests", "5",
+            //"--min-sleep-interval", "60",
+            //"--max-sleep-interval", "90",
             "--ffmpeg-location", ffmpeg_location,
             "--cookies", cookies_file,
             "-o", &output_template,
@@ -125,15 +124,42 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        let output = cmd.spawn()?.wait_with_output().await?;
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        println!("{}", stdout);
-        if !stderr.trim().is_empty() {
-            println!("Error: {}", stderr);
-        }
-        // If the download was successful, update our in-memory archive.
-        if output.status.success() {
+        // Spawn the process.
+        let mut child = cmd.spawn()?;
+
+        // Take stdout and stderr so we can read them asynchronously.
+        let stdout = child.stdout.take().expect("failed to capture stdout");
+        let stderr = child.stderr.take().expect("failed to capture stderr");
+
+        // Create asynchronous readers for stdout and stderr.
+        let stdout_reader = BufReader::new(stdout);
+        let stderr_reader = BufReader::new(stderr);
+
+        // Spawn tasks to read stdout and stderr concurrently.
+        let stdout_task = tokio::spawn(async move {
+            let mut lines = stdout_reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                println!("{}", line);
+            }
+        });
+
+        let stderr_task = tokio::spawn(async move {
+            let mut lines = stderr_reader.lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                eprintln!("{}", line);
+            }
+        });
+
+        // Wait for the process to complete.
+        let status = child.wait().await?;
+        // Ensure the output tasks finish.
+        stdout_task.await?;
+        stderr_task.await?;
+
+        if !status.success() {
+            println!("Error: yt-dlp exited with status: {:?}", status);
+        } else {
+            // If the download was successful, update our in-memory archive.
             if let Some(video_id) = get_video_id(video_url) {
                 downloaded_ids.insert(video_id);
             }
