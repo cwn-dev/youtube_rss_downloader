@@ -8,9 +8,12 @@ use std::process::Stdio;
 use tokio::process::Command;
 use url::Url;
 use tokio::io::{AsyncBufReadExt, BufReader};
+use glob::glob;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    delete_part_files("/home/craig/youtube/videos/")?;
+
     // 1. Define an array of YouTube RSS feed URLs.
     let rss_feeds = vec![
         "https://www.youtube.com/feeds/videos.xml?channel_id=UCE_M8A5yxnLfW0KghEeajjw",
@@ -166,6 +169,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
+    delete_part_files("/home/craig/youtube/videos/")?;
+
     Ok(())
 }
 
@@ -193,4 +198,30 @@ fn get_video_id(url: &str) -> Option<String> {
         Err(e) => eprintln!("Error parsing URL {}: {}", url, e),
     }
     None
+}
+
+/// Deletes all `.part` files in the specified directory.
+///
+/// # Arguments
+/// * `directory` - The directory to search for `.part` files.
+///
+/// # Returns
+/// A `Result` indicating success or failure.
+fn delete_part_files(directory: &str) -> std::io::Result<()> {
+    // Use OS-specific path separators
+    let pattern = format!("{}/{}.part", directory, "*").replace("\\", "/"); 
+
+    for entry in glob(&pattern).expect("Failed to read glob pattern") {
+        match entry {
+            Ok(path) => {
+                if path.is_file() {
+                    println!("Deleting: {}", path.display());
+                    fs::remove_file(&path)?;
+                }
+            }
+            Err(e) => eprintln!("Error: {}", e),
+        }
+    }
+
+    Ok(())
 }
