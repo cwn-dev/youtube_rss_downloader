@@ -129,6 +129,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             "--sleep-requests", "5",
             //"--min-sleep-interval", "60",
             //"--max-sleep-interval", "90",
+            "--match-filters", "!is_live",
             "--ffmpeg-location", ffmpeg_location,
             "--cookies", cookies_file,
             "-o", &output_template,
