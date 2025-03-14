@@ -98,6 +98,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Process each video URL.
     for video_url in &video_urls {
+        // Use to seed downloaded.txt file
+        // // Extract the video ID from the URL.
+        // if let Some(video_id) = get_video_id(video_url) {
+        //     if downloaded_ids.contains(&video_id) {
+        //         //println!("Skipping {} (already downloaded).", video_url);
+        //         continue;
+        //     }
+        // }
+
+        // if let Some(video_id) = get_video_id(video_url) {
+        //     println!("youtube {0}", video_id);
+        // }
+
         // Extract the video ID from the URL.
         if let Some(video_id) = get_video_id(video_url) {
             if downloaded_ids.contains(&video_id) {
